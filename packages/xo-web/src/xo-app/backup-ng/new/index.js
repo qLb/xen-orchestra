@@ -407,6 +407,15 @@ export default [
           size: 'large',
           title: _('schedule'),
         })
+
+        if (
+          schedule.exportRetention === undefined ||
+          schedule.copyRetention === undefined ||
+          schedule.snapshotRetention === undefined
+        ) {
+          return error(_('newScheduleError'), _('retentionRequired'))
+        }
+
         if (
           !(
             (exportMode && schedule.exportRetention > 0) ||
@@ -414,13 +423,13 @@ export default [
             (snapshotMode && schedule.snapshotRetention > 0)
           )
         ) {
-          error(_('newScheduleError'), _('retentionNeeded'))
-        } else {
-          saveSchedule({
-            ...schedule,
-            id: storedSchedule.id || generateRandomId(),
-          })
+          return error(_('newScheduleError'), _('retentionNeeded'))
         }
+
+        saveSchedule({
+          ...schedule,
+          id: storedSchedule.id || generateRandomId(),
+        })
       },
       deleteSchedule: (_, schedule) => ({
         schedules: oldSchedules,
