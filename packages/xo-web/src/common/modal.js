@@ -4,10 +4,11 @@ import map from 'lodash/map'
 import React, { Component, cloneElement } from 'react'
 import { createSelector } from 'selectors'
 import { injectIntl } from 'react-intl'
+import { injectState, provideState } from '@julien-f/freactal'
 import { Modal as ReactModal } from 'react-bootstrap-4/lib'
 
 import _, { messages } from './intl'
-import BaseComponent from './base-component'
+import ActionButton from './action-button'
 import Button from './button'
 import Icon from './icon'
 import propTypes from './prop-types-decorator'
@@ -259,57 +260,98 @@ export const confirm = ({ body, icon = 'alarm', title, strongConfirm }) =>
 
 // -----------------------------------------------------------------------------
 
-const preventDefault = event => event.preventDefault()
-
-class FormModal extends BaseComponent {
-  state = {
-    value: this.props.defaultValue,
-  }
-
-  get value () {
-    return this.state.value
-  }
-
-  render () {
-    const { body, formId } = this.props
-    return (
-      <form id={formId} onSubmit={preventDefault}>
-        {cloneElement(body, {
-          value: this.state.value,
-          onChange: this.linkState('value'),
-        })}
-      </form>
-    )
-  }
-}
-
-export const form = ({ body, defaultValue, icon, title, size }) => {
-  const formId = generateRandomId()
-  const buttons = [
-    {
-      btnStyle: 'primary',
-      label: _('formOk'),
-      form: formId,
-    },
-  ]
-  return new Promise((resolve, reject) => {
-    modal(
-      <GenericModal
-        buttons={buttons}
-        icon={icon}
-        reject={reject}
-        resolve={resolve}
-        title={title}
-      >
-        <FormModal body={body} defaultValue={defaultValue} formId={formId} />
-      </GenericModal>,
+let formModalState
+export const form = props =>
+  new Promise((resolve, reject) => {
+    formModalState.props = {
       reject,
-      {
-        bsSize: size,
-      }
-    )
+      resolve,
+      ...props,
+    }
+    formModalState.showModal = true
+    disableShortcuts()
   })
-}
+
+const getInitialState = () => ({
+  id: generateRandomId(),
+  localValue: undefined,
+  props: undefined,
+  showModal: false,
+})
+export const FormModal = [
+  provideState({
+    initialState: getInitialState,
+    effects: {
+      initialize: function () {
+        formModalState = this.state
+      },
+      finalize: () => {
+        formModalState = undefined
+      },
+      reset: () => getInitialState,
+      close: function ({ reset }) {
+        this.state.showModal = false
+        enableShortcuts()
+        reset()
+      },
+      cancel: function ({ close }) {
+        this.state.props.reject()
+        close()
+      },
+      onChange: (_, localValue) => () => ({
+        localValue,
+      }),
+      submit: ({ close }) => state => {
+        state.props.resolve(state.value)
+        close()
+      },
+    },
+    computed: {
+      value: ({ props = {}, localValue = props.defaultValue }) => localValue,
+    },
+  }),
+  injectState,
+  ({ state: { id, showModal, props = {}, value }, effects }) => (
+    <ReactModal show={showModal} bsSize={props.size} onHide={effects.cancel}>
+      <ReactModal.Header closeButton>
+        <ReactModal.Title>
+          {props.icon !== undefined ? (
+            <span>
+              <Icon icon={props.icon} /> {props.title}
+            </span>
+          ) : (
+            props.title
+          )}
+        </ReactModal.Title>
+      </ReactModal.Header>
+
+      <ReactModal.Body>
+        <form id={id}>
+          {props.body !== undefined &&
+            cloneElement(props.body, {
+              value,
+              onChange: effects.onChange,
+            })}
+        </form>
+      </ReactModal.Body>
+
+      <ReactModal.Footer>
+        <ActionButton
+          btnStyle='primary'
+          form={id}
+          handler={effects.submit}
+          icon='save'
+          size='large'
+        >
+          {_('formOk')}
+        </ActionButton>{' '}
+        <ActionButton handler={effects.cancel} icon='cancel' size='large'>
+          {_('formCancel')}
+        </ActionButton>
+      </ReactModal.Footer>
+    </ReactModal>
+  ),
+].reduceRight((value, decorator) => decorator(value))
 
 // -----------------------------------------------------------------------------
 
